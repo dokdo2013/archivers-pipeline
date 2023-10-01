@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { getStream } from 'twitch-m3u8';
 import { Parser } from 'm3u8-parser';
 import axios from 'axios';
+import { ISegment } from './parser.interface';
 
 @Injectable()
 export class ParserService {
@@ -38,13 +39,10 @@ export class ParserService {
     return parser;
   }
 
-  async getTsUrls(data: any): Promise<any> {
+  async getTsSegments(data: any): Promise<ISegment[]> {
     const parser = await this.getParser(data);
     const ts_segments = parser.manifest.segments;
-    const ts_urls = ts_segments.map((segment) => {
-      return segment.uri;
-    });
 
-    return ts_urls;
+    return ts_segments;
   }
 }

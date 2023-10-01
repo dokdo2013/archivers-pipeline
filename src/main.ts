@@ -1,20 +1,22 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { Logger } from '@nestjs/common';
+import { AppService } from './app.service';
+import { RecorderService } from './recorder/recorder.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  Logger.log('Starting application...');
 
-  app.enableCors();
+  const appContext = await NestFactory.createApplicationContext(AppModule, {
+    logger: ['error', 'warn', 'debug', 'verbose', 'log'],
+  });
 
-  const config = new DocumentBuilder()
-    .setTitle('Yudarlinn Listener')
-    .setDescription('Yudarlinn Listener API description')
-    .setVersion('1.0')
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document);
+  // check env variables
+  const appService = appContext.get(AppService);
+  const { streamId, m3u8Url } = await appService.init();
 
-  await app.listen(3000);
+  // start main recording
+  const recorderService = appContext.get(RecorderService);
+  await recorderService.process(streamId, m3u8Url);
 }
 bootstrap();
