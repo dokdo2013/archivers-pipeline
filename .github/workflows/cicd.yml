@@ -29,7 +29,7 @@ jobs:
       with:
         context: .
         push: true
-        tags: hyeonwoo5342/yudarlinn-listener:${{ github.run_number }}
+        tags: hyeonwoo5342/yudarlinn-pipeline:${{ github.run_number }}
 
   deploy:
     needs: build
@@ -45,7 +45,7 @@ jobs:
 
     - name: Update deployment tag in GitOps repo
       run: |
-        APP_NAME="yudarlinn-listener"
+        APP_NAME="yudarlinn-pipeline"
         cd gitops/apps/${APP_NAME}
         sed -i "s|image: hyeonwoo5342/${APP_NAME}:.*|image: hyeonwoo5342/${APP_NAME}:${{ github.run_number }}|g" deployment.yaml
         git config user.name "dokdo2013"
