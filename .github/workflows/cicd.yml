@@ -1,6 +1,6 @@
 # Example Workflow (Just Dockerfile Build)
 
-name: CI/CD to Haenu Cluster
+name: CI to Docker Hub
 
 on:
   push:
@@ -30,26 +30,3 @@ jobs:
         context: .
         push: true
         tags: hyeonwoo5342/yudarlinn-pipeline:${{ github.run_number }}
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout GitOps repository
-      uses: actions/checkout@v3
-      with:
-        repository: dokdo2013/haenu-cluster
-        token: ${{ secrets.GITOPS_TOKEN }}
-        path: gitops
-
-    - name: Update deployment tag in GitOps repo
-      run: |
-        APP_NAME="yudarlinn-pipeline"
-        cd gitops/apps/${APP_NAME}
-        sed -i "s|image: hyeonwoo5342/${APP_NAME}:.*|image: hyeonwoo5342/${APP_NAME}:${{ github.run_number }}|g" deployment.yaml
-        git config user.name "dokdo2013"
-        git config user.email "hyeonwoo5342@gmail.com"
-        git add .
-        git commit -m "feat(${APP_NAME}): Build and deploy new commit ${{ github.run_number }}"
-        git push
