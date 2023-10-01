@@ -128,6 +128,13 @@ export class RecorderService {
                     value: config.bucketName,
                   },
                 ],
+                envFrom: [
+                  {
+                    secretRef: {
+                      name: 'yudarlinn-secret',
+                    },
+                  },
+                ],
                 resources: {
                   requests: {
                     cpu: '150m',
