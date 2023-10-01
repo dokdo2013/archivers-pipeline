@@ -128,6 +128,16 @@ export class RecorderService {
                     value: config.bucketName,
                   },
                 ],
+                resources: {
+                  requests: {
+                    cpu: '150m',
+                    memory: '300Mi',
+                  },
+                  limits: {
+                    cpu: '150m',
+                    memory: '300Mi',
+                  },
+                },
               },
             ],
             restartPolicy: 'OnFailure',
