@@ -25,6 +25,7 @@ export class RecorderService {
     // 전역변수
     let segmentCount = 0;
     let failureCount = 0;
+    const segmentSet = new Set();
 
     // 2초 간격이니 30초동안 호출이 안되면 종료
     while (failureCount < 15) {
@@ -41,11 +42,19 @@ export class RecorderService {
         }
 
         tsSegments.forEach(async (segment) => {
+          // [escape condition] if segment is already in set, continue
+          if (segmentSet.has(segment.uri)) {
+            return;
+          }
+
           // 3. create kubernetes job to download and upload ts file
           await this.createJob(segment, streamId);
 
           // 4. log
           Logger.log(`segment ${segmentCount++} requested`);
+
+          // 5. add segment to set
+          segmentSet.add(segment.uri);
         });
 
         // 5. sleep for 2 seconds (using promise)
