@@ -160,6 +160,11 @@ export class RecorderService {
                 },
               },
             ],
+            imagePullSecrets: [
+              {
+                name: 'dockerhub-secret',
+              },
+            ],
             restartPolicy: 'OnFailure',
           },
         },
