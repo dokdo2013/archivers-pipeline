@@ -6,6 +6,7 @@ import { Sequelize } from 'sequelize-typescript';
 import { ParserService } from 'src/parser/parser.service';
 import { ISegment } from 'src/parser/parser.interface';
 import * as k8s from '@kubernetes/client-node';
+import * as dayjs from 'dayjs';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
@@ -66,6 +67,7 @@ export class RecorderService {
     const randomString = Math.random().toString(36).substring(7);
 
     const config = {
+      s3Region: 'auto',
       s3Url: `https://${this.configService.get<string>(
         'CLOUDFLARE_ACCOUNT_ID',
       )}.r2.cloudflarestorage.com`,
@@ -74,6 +76,7 @@ export class RecorderService {
         'CLOUDFLARE_SECRET_ACCESS_KEY',
       ),
       bucketName: 'yudarlinn-assets',
+      cdnBaseUrl: 'https://yudarlinn-assets.leaven.team',
     };
 
     const kc = new k8s.KubeConfig();
@@ -101,7 +104,9 @@ export class RecorderService {
                   },
                   {
                     name: 'DATE',
-                    value: segment.dateTimeString,
+                    value: dayjs(segment.dateTimeString).format(
+                      'YYYY-MM-DDTHH:mm:ssZ',
+                    ),
                   },
                   {
                     name: 'SEGMENT_URI',
@@ -110,6 +115,10 @@ export class RecorderService {
                   {
                     name: 'SEGMENT_DURATION',
                     value: segment.duration.toString(),
+                  },
+                  {
+                    name: 'S3_REGION',
+                    value: config.s3Region,
                   },
                   {
                     name: 'S3_URL',
@@ -126,6 +135,10 @@ export class RecorderService {
                   {
                     name: 'S3_BUCKET_NAME',
                     value: config.bucketName,
+                  },
+                  {
+                    name: 'CDN_BASE_URL',
+                    value: config.cdnBaseUrl,
                   },
                 ],
                 envFrom: [
