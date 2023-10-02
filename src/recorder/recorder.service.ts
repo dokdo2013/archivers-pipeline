@@ -8,6 +8,7 @@ import { ISegment } from 'src/parser/parser.interface';
 import * as k8s from '@kubernetes/client-node';
 import * as dayjs from 'dayjs';
 import { ConfigService } from '@nestjs/config';
+import { InjectRedis, Redis } from '@nestjs-modules/ioredis';
 
 @Injectable()
 export class RecorderService {
@@ -17,6 +18,7 @@ export class RecorderService {
     private readonly parserService: ParserService,
     private readonly sequelize: Sequelize,
     private readonly configService: ConfigService,
+    @InjectRedis() private readonly redisClient: Redis,
   ) {
     this.sequelize.addModels([YudarlinnStream, YudarlinnSegment]);
   }
@@ -25,7 +27,9 @@ export class RecorderService {
     // 전역변수
     let segmentCount = 0;
     let failureCount = 0;
-    const segmentSet = new Set();
+
+    // redis (set 자료구조)
+    const redisKey = `archivers:recorder:${streamId}`;
 
     // 2초 간격이니 30초동안 호출이 안되면 종료
     while (failureCount < 15) {
@@ -43,7 +47,11 @@ export class RecorderService {
 
         tsSegments.forEach(async (segment) => {
           // [escape condition] if segment is already in set, continue
-          if (segmentSet.has(segment.uri)) {
+          const hasSegment = await this.redisClient.sismember(
+            redisKey,
+            segment.uri,
+          );
+          if (hasSegment) {
             return;
           }
 
@@ -54,7 +62,7 @@ export class RecorderService {
           Logger.log(`segment ${segmentCount++} requested`);
 
           // 5. add segment to set
-          segmentSet.add(segment.uri);
+          await this.redisClient.sadd(redisKey, segment.uri);
         });
 
         // 5. sleep for 2 seconds (using promise)
@@ -84,8 +92,8 @@ export class RecorderService {
       s3SecretAccessKey: this.configService.get<string>(
         'CLOUDFLARE_SECRET_ACCESS_KEY',
       ),
-      bucketName: 'yudarlinn-assets',
-      cdnBaseUrl: 'https://yudarlinn-assets.leaven.team',
+      bucketName: 'archivers-assets',
+      cdnBaseUrl: 'https://assets.archivers.app',
     };
 
     const kc = new k8s.KubeConfig();
@@ -97,15 +105,18 @@ export class RecorderService {
       apiVersion: 'batch/v1',
       kind: 'Job',
       metadata: {
-        name: `yudarlinn-processor-${streamId}-${randomString}`,
+        name: `archivers-processor-${streamId}-${randomString}`,
       },
       spec: {
         template: {
           spec: {
+            nodeSelector: {
+              'vke.vultr.com/node-pool': 'archivers',
+            },
             containers: [
               {
                 name: 'processor',
-                image: 'hyeonwoo5342/yudarlinn-processor:latest',
+                image: 'hyeonwoo5342/archivers-processor:latest',
                 env: [
                   {
                     name: 'STREAM_ID',
@@ -153,18 +164,18 @@ export class RecorderService {
                 envFrom: [
                   {
                     secretRef: {
-                      name: 'yudarlinn-secret',
+                      name: 'archivers-secret',
                     },
                   },
                 ],
                 resources: {
                   requests: {
                     cpu: '150m',
-                    memory: '300Mi',
+                    memory: '150Mi',
                   },
                   limits: {
                     cpu: '150m',
-                    memory: '300Mi',
+                    memory: '150Mi',
                   },
                 },
               },
@@ -182,7 +193,7 @@ export class RecorderService {
       },
     };
 
-    await k8sApi.createNamespacedJob('leaven', jobManifest);
+    await k8sApi.createNamespacedJob('archivers', jobManifest);
   }
 
   /**

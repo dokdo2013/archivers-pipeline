@@ -29,4 +29,4 @@ jobs:
       with:
         context: .
         push: true
-        tags: hyeonwoo5342/yudarlinn-pipeline:${{ github.run_number }},hyeonwoo5342/yudarlinn-pipeline:latest
+        tags: hyeonwoo5342/archivers-pipeline:${{ github.run_number }},hyeonwoo5342/archivers-pipeline:latest
