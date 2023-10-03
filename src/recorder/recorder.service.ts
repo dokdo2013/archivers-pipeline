@@ -1,7 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
-import { YudarlinnStream } from './entities/yudarlinn-stream.entity';
-import { YudarlinnSegment } from './entities/yudarlinn-segment.entity';
 import { Sequelize } from 'sequelize-typescript';
 import { ParserService } from 'src/parser/parser.service';
 import { ISegment } from 'src/parser/parser.interface';
@@ -9,27 +7,38 @@ import * as k8s from '@kubernetes/client-node';
 import * as dayjs from 'dayjs';
 import { ConfigService } from '@nestjs/config';
 import { InjectRedis, Redis } from '@nestjs-modules/ioredis';
+import { Stream } from './entities/stream.entity';
+import { Streamer } from './entities/streamer.entity';
+import axios from 'axios';
 
 @Injectable()
 export class RecorderService {
   constructor(
-    @InjectModel(YudarlinnSegment)
-    private readonly yudarlinnSegmentModel: typeof YudarlinnSegment,
+    @InjectModel(Stream)
+    private readonly StreamModel: typeof Stream,
+    @InjectModel(Streamer)
+    private readonly StreamerModel: typeof Streamer,
     private readonly parserService: ParserService,
     private readonly sequelize: Sequelize,
     private readonly configService: ConfigService,
     @InjectRedis() private readonly redisClient: Redis,
   ) {
-    this.sequelize.addModels([YudarlinnStream, YudarlinnSegment]);
+    this.sequelize.addModels([Stream, Streamer]);
   }
 
   async process(streamId: string, m3u8Url: string) {
     // 전역변수
-    let segmentCount = 0;
     let failureCount = 0;
 
     // redis (set 자료구조)
     const redisKey = `archivers:recorder:${streamId}`;
+    const segmentCountKey = `archivers:recorder:${streamId}:segmentCount`;
+    let segmentCount = parseInt(
+      (await this.redisClient.get(segmentCountKey)) || '-1',
+    );
+    if (segmentCount === -1) {
+      await this.redisClient.set(segmentCountKey, '0');
+    }
 
     // 2초 간격이니 30초동안 호출이 안되면 종료
     while (failureCount < 15) {
@@ -58,15 +67,36 @@ export class RecorderService {
           // 3. create kubernetes job to download and upload ts file
           await this.createJob(segment, streamId);
 
-          // 4. log
+          // 4. log and increase segment count
           Logger.log(`segment ${segmentCount++} requested`);
+          await this.redisClient.set(segmentCountKey, segmentCount.toString());
 
           // 5. add segment to set
           await this.redisClient.sadd(redisKey, segment.uri);
         });
 
-        // 5. sleep for 2 seconds (using promise)
+        // 6. sleep for 2 seconds (using promise)
         await new Promise((resolve) => setTimeout(resolve, 2000));
+
+        // 7. when the segment count is 20, then save thumbnail image (when fail, retry 10 times)
+        if (segmentCount % 20 === 0 && segmentCount <= 200) {
+          const thumbnailKey = `archivers:recorder:${streamId}:thumbnail`;
+          const hasThumbnail = await this.redisClient.get(thumbnailKey);
+
+          if (!hasThumbnail) {
+            try {
+              await this.saveThumbnail(streamId);
+              await this.redisClient.set(thumbnailKey, 'true');
+              Logger.log('thumbnail saved');
+            } catch (err) {
+              console.error(err);
+            }
+          } else {
+            Logger.log('thumbnail already saved');
+          }
+        }
+
+        // 8. set failureCount to 0
         failureCount = 0;
       } catch (err) {
         console.error(err);
@@ -196,28 +226,74 @@ export class RecorderService {
     await k8sApi.createNamespacedJob('archivers', jobManifest);
   }
 
-  /**
-   * Create segment
-   * @param streamId 생방송 ID
-   * @param segmentId 세그먼트 ID
-   * @param link 세그먼트 링크
-   * @returns {Promise<YudarlinnSegment>} YudarlinnSegment
-   */
-  async createSegment(
-    streamId: string,
-    segmentId: string,
-    duration: number,
-    segmentNumber: number,
-    link: string,
-  ) {
-    const res = await this.yudarlinnSegmentModel.create({
-      streamId,
-      segmentId,
-      segmentLength: duration,
-      segmentNumber,
-      link,
+  async saveThumbnail(streamId: string) {
+    // get user name from streamId
+    const stream = await this.StreamModel.findOne({
+      where: {
+        streamId,
+      },
+    });
+    const streamerId = stream.streamerId;
+    const streamer = await this.StreamerModel.findOne({
+      where: {
+        id: streamerId,
+      },
     });
 
-    return res;
+    // make twitch thumbnail url
+    const twitchThumbnailUrl = `https://static-cdn.jtvnw.net/previews-ttv/live_user_${streamer.twitchName}.jpg`;
+    const fileName = `archivers-thumb-${streamId}`;
+
+    // upload thumbnail to cloudflare images
+    await this.uploadToCloudflareImages(twitchThumbnailUrl, fileName);
+
+    const thumbnailUrl = `https://archivers.app/cdn-cgi/imagedelivery/lR-z0ff8FVe1ydEi9nc-5Q/${fileName}/public`;
+
+    // save to database
+    await this.StreamModel.update(
+      {
+        thumbnailUrl,
+      },
+      {
+        where: {
+          streamId,
+        },
+      },
+    );
+
+    return {
+      url: thumbnailUrl,
+    };
+  }
+
+  private async uploadToCloudflareImages(imageUrl: string, fileName: string) {
+    // curl --request POST \
+    // --url https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/images/v1 \
+    // --header 'Authorization: Bearer <API_TOKEN>' \
+    // --form 'url=https://[user:password@]example.com/<PATH_TO_IMAGE>' \
+    // --form 'metadata={"key":"value"}' \
+    // --form 'requireSignedURLs=false'
+
+    const account = this.configService.get<string>('CLOUDFLARE_ACCOUNT_ID');
+    const token = this.configService.get<string>('CLOUDFLARE_API_TOKEN');
+
+    const url = `https://api.cloudflare.com/client/v4/accounts/${account}/images/v1`;
+
+    const formData = new FormData();
+    formData.append('url', imageUrl);
+    formData.append('requireSignedURLs', 'false');
+    formData.append('id', fileName);
+
+    const response = await axios
+      .post(url, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      .catch((err) => {
+        console.error(err);
+      });
+
+    return true;
   }
 }
