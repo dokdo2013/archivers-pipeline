@@ -111,7 +111,7 @@ export class RecorderService {
         template: {
           spec: {
             nodeSelector: {
-              'vke.vultr.com/node-pool': 'archivers',
+              'vke.vultr.com/node-pool': 'archivers-sub',
             },
             containers: [
               {
