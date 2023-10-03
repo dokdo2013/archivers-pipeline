@@ -30,7 +30,7 @@ export class RecorderService {
     // 전역변수
     let failureCount = 0;
 
-    // redis (set 자료구조)
+    // redis (set)
     const redisKey = `archivers:recorder:${streamId}`;
     const segmentCountKey = `archivers:recorder:${streamId}:segmentCount`;
     let segmentCount = parseInt(
@@ -48,13 +48,16 @@ export class RecorderService {
 
         // 2. get ts segments
         const tsSegments = await this.parserService.getTsSegments(m3u8Data);
+        const filteredSegments = tsSegments.filter((segment) => {
+          segment.title === "live"
+        });
 
         // [escape condition] if there are no ts urls, break
         if (tsSegments.length === 0) {
           break;
         }
 
-        tsSegments.forEach(async (segment) => {
+        filteredSegments.forEach(async (segment) => {
           // [escape condition] if segment is already in set, continue
           const hasSegment = await this.redisClient.sismember(
             redisKey,
