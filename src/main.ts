@@ -18,5 +18,7 @@ async function bootstrap() {
   // start main recording
   const recorderService = appContext.get(RecorderService);
   await recorderService.process(streamId, m3u8Url);
+
+  process.exit(0);
 }
 bootstrap();

@@ -103,6 +103,8 @@ export class RecorderService {
         failureCount++;
       }
     }
+
+    return true;
   }
 
   /**
