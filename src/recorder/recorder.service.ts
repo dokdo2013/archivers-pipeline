@@ -275,7 +275,7 @@ export class RecorderService {
     // --form 'requireSignedURLs=false'
 
     const account = this.configService.get<string>('CLOUDFLARE_ACCOUNT_ID');
-    const token = this.configService.get<string>('CLOUDFLARE_API_TOKEN');
+    const token = this.configService.get<string>('CLOUDFLARE_IMAGES_API_TOKEN');
 
     const url = `https://api.cloudflare.com/client/v4/accounts/${account}/images/v1`;
 
@@ -284,7 +284,7 @@ export class RecorderService {
     formData.append('requireSignedURLs', 'false');
     formData.append('id', fileName);
 
-    const response = await axios
+    await axios
       .post(url, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
