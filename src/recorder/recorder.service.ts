@@ -48,22 +48,25 @@ export class RecorderService {
 
         // 2. get ts segments
         const tsSegments = await this.parserService.getTsSegments(m3u8Data);
-        const filteredSegments = tsSegments.filter((segment) => {
-          segment.title === "live"
-        });
 
         // [escape condition] if there are no ts urls, break
         if (tsSegments.length === 0) {
           break;
         }
 
-        filteredSegments.forEach(async (segment) => {
+        tsSegments.forEach(async (segment) => {
           // [escape condition] if segment is already in set, continue
           const hasSegment = await this.redisClient.sismember(
             redisKey,
             segment.uri,
           );
           if (hasSegment) {
+            return;
+          }
+
+          // [escape condition] if segment is not live, continue
+          if (segment.title !== "live") {
+            Logger.log(`segment ${segmentCount++} is commercial break - so skip!`);
             return;
           }
 
