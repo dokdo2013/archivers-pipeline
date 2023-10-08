@@ -10,6 +10,9 @@ import { InjectRedis, Redis } from '@nestjs-modules/ioredis';
 import { Stream } from './entities/stream.entity';
 import { Streamer } from './entities/streamer.entity';
 import axios from 'axios';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
+import { WorkerDto } from './dto/worker.dto';
 
 @Injectable()
 export class RecorderService {
@@ -22,6 +25,7 @@ export class RecorderService {
     private readonly sequelize: Sequelize,
     private readonly configService: ConfigService,
     @InjectRedis() private readonly redisClient: Redis,
+    @InjectQueue('worker') private readonly workerQueue: Queue,
   ) {
     this.sequelize.addModels([Stream, Streamer]);
   }
@@ -65,8 +69,10 @@ export class RecorderService {
           }
 
           // [escape condition] if segment is not live, continue
-          if (segment.title !== "live") {
-            Logger.log(`segment ${segmentCount++} is commercial break - so skip!`);
+          if (segment.title !== 'live') {
+            Logger.log(
+              `segment ${segmentCount++} is commercial break - so skip!`,
+            );
             return;
           }
 
@@ -232,6 +238,41 @@ export class RecorderService {
     };
 
     await k8sApi.createNamespacedJob('archivers', jobManifest);
+  }
+
+  // k8s job을 생성하는 대신, worker queue에 추가하는 방식으로 변경
+  async addWorkerQueue(segment: ISegment, streamId: string) {
+    const config = {
+      s3Region: 'auto',
+      s3Url: `https://${this.configService.get<string>(
+        'CLOUDFLARE_ACCOUNT_ID',
+      )}.r2.cloudflarestorage.com`,
+      s3AccessKeyId: this.configService.get<string>('CLOUDFLARE_ACCESS_KEY_ID'),
+      s3SecretAccessKey: this.configService.get<string>(
+        'CLOUDFLARE_SECRET_ACCESS_KEY',
+      ),
+      bucketName: 'archivers-assets',
+      cdnBaseUrl: 'https://assets.archivers.app',
+    };
+
+    const queueData: WorkerDto = {
+      streamId,
+      date: dayjs(segment.dateTimeString).format('YYYY-MM-DDTHH:mm:ssZ'),
+      segmentUri: segment.uri,
+      segmentDuration: segment.duration.toString(),
+      s3Region: config.s3Region,
+      s3Url: config.s3Url,
+      s3AccessKeyId: config.s3AccessKeyId,
+      s3SecretAccessKey: config.s3SecretAccessKey,
+      s3BucketName: config.bucketName,
+      cdnBaseUrl: config.cdnBaseUrl,
+    };
+
+    await this.workerQueue.add('processSegment', queueData, {
+      attempts: 5,
+      backoff: 5000,
+      // removeOnComplete: true,
+    });
   }
 
   async saveThumbnail(streamId: string) {

@@ -7,6 +7,7 @@ import { Dialect } from 'sequelize';
 import { ParserModule } from './parser/parser.module';
 import { RecorderModule } from './recorder/recorder.module';
 import { RedisModule } from '@nestjs-modules/ioredis';
+import { BullModule } from '@nestjs/bull';
 
 @Module({
   imports: [
@@ -27,6 +28,13 @@ import { RedisModule } from '@nestjs-modules/ioredis';
         host: process.env.REDIS_HOST,
         port: Number(process.env.REDIS_PORT),
         db: Number(process.env.REDIS_DB),
+        password: process.env.REDIS_PASSWORD || undefined,
+      },
+    }),
+    BullModule.forRoot({
+      redis: {
+        host: process.env.REDIS_HOST,
+        port: Number(process.env.REDIS_PORT),
         password: process.env.REDIS_PASSWORD || undefined,
       },
     }),
