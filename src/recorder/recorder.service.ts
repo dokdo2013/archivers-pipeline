@@ -76,8 +76,9 @@ export class RecorderService {
             return;
           }
 
-          // 3. create kubernetes job to download and upload ts file
-          await this.createJob(segment, streamId);
+          // // 3. create kubernetes job to download and upload ts file
+          // await this.createJob(segment, streamId);
+          await this.addWorkerQueue(segment, streamId);
 
           // 4. log and increase segment count
           Logger.log(`segment ${segmentCount++} requested`);
