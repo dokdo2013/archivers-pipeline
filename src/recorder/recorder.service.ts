@@ -272,6 +272,7 @@ export class RecorderService {
     await this.workerQueue.add('processSegment', queueData, {
       attempts: 5,
       backoff: 5000,
+      timeout: 20000,
       removeOnComplete: true,
     });
   }
