@@ -91,8 +91,12 @@ export class RecorderService {
         // 6. sleep for 2 seconds (using promise)
         await new Promise((resolve) => setTimeout(resolve, 2000));
 
-        // 7. when the segment count is 20, then save thumbnail image (when fail, retry 50 times)
-        if (segmentCount % 20 === 0 && segmentCount <= 1000) {
+        // 7. when the segment count is 20 and larger than 100, then save thumbnail image (when fail, retry 40 times)
+        if (
+          segmentCount % 20 === 0 &&
+          segmentCount <= 1000 &&
+          segmentCount > 100
+        ) {
           const thumbnailKey = `archivers:recorder:${streamId}:thumbnail`;
           const hasThumbnail = await this.redisClient.get(thumbnailKey);
 
